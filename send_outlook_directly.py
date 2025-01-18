@@ -6,4 +6,6 @@ outlook = client.Dispatch('Outlook.Application')
 
 message = outlook.CreateItem(0)
 
+
+
 message.Display()
