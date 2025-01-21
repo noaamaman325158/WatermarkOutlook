@@ -1,17 +1,18 @@
 import win32com.client as client
-import time
+import win32gui
 import os
+import time
 from datetime import datetime
-import hashlib
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.colors import red
 import io
-import shutil
+import hashlib
 
 
 def create_watermark(watermark_text):
+    print(f"Creating watermark with text: {watermark_text}")
     packet = io.BytesIO()
     can = canvas.Canvas(packet, pagesize=letter)
 
@@ -26,10 +27,12 @@ def create_watermark(watermark_text):
     can.save()
 
     packet.seek(0)
+    print("Watermark created successfully")
     return packet
 
 
 def add_watermark(input_pdf_path, output_pdf_path, watermark_text):
+    print(f"Adding watermark to PDF: {input_pdf_path}")
     watermark_pdf = PdfReader(create_watermark(watermark_text))
     watermark_page = watermark_pdf.pages[0]
 
@@ -43,6 +46,7 @@ def add_watermark(input_pdf_path, output_pdf_path, watermark_text):
 
     with open(output_pdf_path, "wb") as output_pdf:
         writer.write(output_pdf)
+    print(f"Watermarked PDF saved to: {output_pdf_path}")
 
 
 def generate_email_id(message):
@@ -51,166 +55,217 @@ def generate_email_id(message):
     return email_hash
 
 
-def send_processed_files(output_folder, target_email, unique_email_id):
+def process_and_create_new_email(message, input_folder, output_folder, watermark_text):
     try:
-        # Get the MAPI namespace first
-        outlook = client.Dispatch('Outlook.Application')
-        namespace = outlook.GetNamespace('MAPI')
+        # Process attachments first
+        processed_files = {}
 
-        # Create a new mail item
-        mail = outlook.CreateItem(0)
+        # Save and process each attachment
+        for attachment in message.Attachments:
+            if not attachment.FileName.lower().endswith('.pdf'):
+                print(f"Skipping non-PDF file: {attachment.FileName}")
+                continue
 
-        # Get the default profile's email address
-        accounts = namespace.Accounts
-        default_account = None
-        for account in accounts:
-            print(f"Found account: {account.DisplayName}")
-            default_account = account
-            break
+            input_path = os.path.join(input_folder, attachment.FileName)
+            output_path = os.path.join(output_folder, attachment.FileName)
 
-        if default_account is None:
-            raise Exception("No email account found in Outlook")
+            # Save original attachment
+            attachment.SaveAsFile(input_path)
+            print(f"Attachment saved: {input_path}")
 
-        # Configure the email
-        mail.SendUsingAccount = default_account
-        mail._oleobj_.Invoke(*(64209, 0, 8, 0, default_account))  # Force the account to be used
+            # Watermark the PDF
+            print(f"Watermarking PDF: {attachment.FileName}")
+            add_watermark(input_path, output_path, watermark_text)
 
-        mail.To = target_email
-        mail.Subject = f"Processed files for email {unique_email_id}"
-        mail.Body = f"Please find attached the processed files from folder: {output_folder}"
+            # Store information for later use
+            processed_files[attachment.FileName] = output_path
 
-        # Add attachments
-        for filename in os.listdir(output_folder):
-            file_path = os.path.abspath(os.path.join(output_folder, filename))
-            if os.path.isfile(file_path):
-                try:
-                    print(f"Attaching file: {file_path}")
-                    mail.Attachments.Add(Source=file_path)
-                except Exception as attach_err:
-                    print(f"Error attaching {filename}: {attach_err}")
+        if not processed_files:
+            print("No PDF files to process.")
+            return
 
-        # Display email before sending (for debugging)
-        mail.Display()
+        # Create a new email item
+        outlook = client.Dispatch("Outlook.Application")
+        new_mail = outlook.CreateItem(0)  # 0: olMailItem
 
-        # Save to drafts first
-        mail.Save()
-        print("Email saved to drafts")
+        # Set the subject and body of the new email
+        new_mail.Subject = f"Processed: {message.Subject}"
+        new_mail.Body = "Please find the processed attachments."
 
-        # Try to send
+        # Add processed attachments to the new email
+        for filename, filepath in processed_files.items():
+            print(f"Adding processed file: {filename}")
+            try:
+                new_mail.Attachments.Add(Source=filepath)
+                print(f"Processed file added: {filepath}")
+            except Exception as e:
+                print(f"Error adding attachment {filename}: {e}")
+
+        # Display the new email
+        new_mail.Display()
+        print("New email created successfully with processed attachments")
+
+        # Clean up temporary files
         try:
-            mail.Send()
-            print(f"Email sent successfully to {target_email}")
-        except Exception as send_err:
-            print(f"Failed to send email automatically: {send_err}")
-            print("Email is saved in drafts folder - please send manually")
+            for file in os.listdir(input_folder):
+                os.remove(os.path.join(input_folder, file))
+            for file in os.listdir(output_folder):
+                os.remove(os.path.join(output_folder, file))
+            print("Temporary files cleaned up")
+        except Exception as e:
+            print(f"Warning: Could not clean up some temporary files: {e}")
 
     except Exception as e:
-        print(f"Error setting up email: {e}")
-        print(f"Detailed error: {str(e)}")
-        try:
-            # Fallback: Save to drafts if everything else fails
-            if 'mail' in locals():
-                mail.Save()
-                print("Email saved to drafts as fallback")
-        except:
-            print("Could not even save to drafts")
+        print(f"Error creating new email: {e}")
+        raise
 
 
-def process_attachments(input_folder, output_folder, watermark_text):
-    # Process all files in the input folder
-    for filename in os.listdir(input_folder):
-        input_file_path = os.path.join(input_folder, filename)
-        output_file_path = os.path.join(output_folder, filename)
+def get_outlook_dialog():
+    def enum_windows_callback(hwnd, windows):
+        if win32gui.IsWindowVisible(hwnd) and win32gui.IsWindowEnabled(hwnd):
+            window_text = win32gui.GetWindowText(hwnd)
+            if "Outlook" in window_text:
+                windows.append((hwnd, window_text))
+        return True
 
-        # If it's a PDF, add watermark
-        if filename.lower().endswith('.pdf'):
-            print(f"Watermarking PDF: {filename}")
-            add_watermark(input_file_path, output_file_path, watermark_text)
-        # For non-PDF files, just copy them
+    windows = []
+    win32gui.EnumWindows(enum_windows_callback, windows)
+    return windows
+
+
+def identify_current_outlook_message():
+    try:
+        outlook = client.Dispatch("Outlook.Application")
+        inspector = outlook.ActiveInspector()
+        if inspector:
+            current_item = inspector.CurrentItem
+            if current_item:
+                print(f"Subject: {current_item.Subject}")
+                print(f"Sender: {current_item.SenderName}")
+                print(f"Received Time: {current_item.ReceivedTime}")
+                return current_item
+            else:
+                print("No current item in the active inspector.")
         else:
-            print(f"Copying file: {filename}")
-            shutil.copy2(input_file_path, output_file_path)
+            print("No active inspector found.")
+    except Exception as e:
+        print(f"Error accessing Outlook: {e}")
+    return None
 
 
-def monitor_outlook_inbox():
+def identify_new_email_tab():
+    try:
+        outlook = client.Dispatch("Outlook.Application")
+        inspector = outlook.ActiveInspector()
+        if inspector:
+            current_item = inspector.CurrentItem
+            if current_item and current_item.Class == 43:  # 43 corresponds to olMailItem
+                print("A new email tab is open.")
+                print(f"Subject: {current_item.Subject}")
+
+                # Identify attachments
+                if current_item.Attachments.Count > 0:
+                    print("Attachments:")
+                    for attachment in current_item.Attachments:
+                        print(f" - {attachment.FileName}")
+                else:
+                    print("No attachments found.")
+
+                return current_item
+            else:
+                print("No new email tab is open.")
+        else:
+            print("No active inspector found.")
+    except Exception as e:
+        print(f"Error accessing Outlook: {e}")
+    return None
+
+
+def identify_new_email_tab():
+    try:
+        outlook = client.Dispatch("Outlook.Application")
+
+        # Get all open inspectors
+        for inspector in outlook.Inspectors:
+            current_item = inspector.CurrentItem
+
+            # Check if it's a mail item and if it's in compose mode
+            if current_item and current_item.Class == 43:  # olMailItem = 43
+                # Check if the item is unsent (draft/new email)
+                if not current_item.Sent:
+                    print("\nFound new email composition window:")
+                    print(f"Subject: {current_item.Subject}")
+
+                    # Check for attachments
+                    if current_item.Attachments.Count > 0:
+                        print("\nAttachments found:")
+                        for attachment in current_item.Attachments:
+                            print(f" - {attachment.FileName}")
+                        return current_item
+
+        return None
+
+    except Exception as e:
+        print(f"Error accessing Outlook: {e}")
+        return None
+
+
+def monitor_outlook():
     # Create project directories
     base_attachments_dir = os.path.join(os.getcwd(), 'attachments')
     output_attachments_dir = os.path.join(os.getcwd(), 'output_attachments')
     os.makedirs(base_attachments_dir, exist_ok=True)
     os.makedirs(output_attachments_dir, exist_ok=True)
 
-    # Create Outlook application object
-    outlook = client.Dispatch('Outlook.Application')
-    namespace = outlook.GetNamespace('MAPI')
-    inbox = namespace.GetDefaultFolder(6)
+    processed_items = set()  # Track processed items by their EntryID
 
-    processed_emails = set()
-
-    print("Starting inbox monitoring...")
-    print(f"Watching for emails from: noaamaman325158@gmail.com")
+    print("Starting Outlook monitoring...")
+    print("Looking for new email composition windows with attachments...")
+    print("Press Ctrl+C to stop monitoring")
 
     try:
         while True:
-            messages = inbox.Items
-            messages.Sort("[ReceivedTime]", True)
+            # Check for new email composition windows
+            new_email = identify_new_email_tab()
 
-            for message in messages:
-                email_id = f"{message.EntryID}"
+            if new_email and new_email.EntryID not in processed_items:
+                print("\nNew email composition detected!")
+                print(f"Subject: {new_email.Subject}")
 
-                if email_id in processed_emails:
-                    continue
+                if new_email.Attachments.Count > 0:
+                    print("Attachments found:")
+                    for attachment in new_email.Attachments:
+                        print(f" - {attachment.FileName}")
 
-                if message.SenderEmailAddress.lower() == "noaamaman325158@gmail.com":
-                    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    unique_email_id = generate_email_id(message)
+                    # Create directories for this email
+                    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                    email_folder_name = f"email_{timestamp}"
+                    input_attachments_dir = os.path.join(base_attachments_dir, email_folder_name)
+                    output_attachments_dir_email = os.path.join(output_attachments_dir, email_folder_name)
 
-                    print("\nNew email detected!")
-                    print(f"Email ID: {unique_email_id}")
-                    print(f"Time detected: {current_time}")
-                    print(f"Subject: {message.Subject}")
+                    os.makedirs(input_attachments_dir, exist_ok=True)
+                    os.makedirs(output_attachments_dir_email, exist_ok=True)
 
-                    if message.Attachments.Count > 0:
-                        # Create input and output folders for this email
-                        email_folder_name = f"email_{unique_email_id}"
-                        input_attachments_dir = os.path.join(base_attachments_dir, email_folder_name)
-                        output_attachments_dir_email = os.path.join(output_attachments_dir, email_folder_name)
+                    # Process the email
+                    process_and_create_new_email(
+                        new_email,
+                        input_attachments_dir,
+                        output_attachments_dir_email,
+                        f"Processed {timestamp}"
+                    )
 
-                        os.makedirs(input_attachments_dir, exist_ok=True)
-                        os.makedirs(output_attachments_dir_email, exist_ok=True)
-
-                        # Save original attachments
-                        for attachment in message.Attachments:
-                            attachment_path = os.path.join(input_attachments_dir, attachment.FileName)
-                            print(f"Saving attachment: {attachment.FileName}")
-                            attachment.SaveAsFile(attachment_path)
-
-                        # Process PDFs with watermark
-                        process_attachments(
-                            input_attachments_dir,
-                            output_attachments_dir_email,
-                            f"Processed {unique_email_id}"
-                        )
-
-                        print(f"Original attachments saved to: {input_attachments_dir}")
-                        print(f"Processed attachments saved to: {output_attachments_dir_email}")
-
-                        # Send processed files to target email
-                        send_processed_files(
-                            output_attachments_dir_email,
-                            "noaamaman2@gmail.com",
-                            unique_email_id
-                        )
-
+                    processed_items.add(new_email.EntryID)
+                    print(f"Email processed successfully")
                     print("-" * 50)
-                    processed_emails.add(email_id)
 
-            time.sleep(10)
+            time.sleep(2)  # Check every 2 seconds
 
     except KeyboardInterrupt:
         print("\nMonitoring stopped by user")
     except Exception as e:
         print(f"\nAn error occurred: {e}")
+        raise
 
 
 if __name__ == "__main__":
-    monitor_outlook_inbox()
+    monitor_outlook()
