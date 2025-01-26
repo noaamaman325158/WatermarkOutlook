@@ -134,6 +134,26 @@ def process_and_create_new_email(message, input_folder, output_folder, watermark
         return False
 
 
+# For future usage
+def is_valid_filename_pattern(filename):
+    # Check if filename matches pattern: PQ24000001 - הדפסת הצעת מחיר-פלדום פינגולד.pdf
+    if not filename.endswith('.pdf'):
+        return False
+
+    parts = filename.split(' - ')
+    if len(parts) != 2:
+        return False
+
+    id_part = parts[0]
+    if not (id_part.startswith('PQ') and len(id_part) >= 8 and id_part[2:].isdigit()):
+        return False
+
+    if parts[1] != 'הדפסת הצעת מחיר-פלדום פינגולד.pdf':
+        return False
+
+    return True
+
+
 def monitor_outlook():
     base_attachments_dir = os.path.join(os.getcwd(), 'attachments')
     output_attachments_dir = os.path.join(os.getcwd(), 'output_attachments')
