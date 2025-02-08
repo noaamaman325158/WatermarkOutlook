@@ -67,23 +67,20 @@ def add_watermark(input_pdf_path, output_pdf_path, watermark_text):
 
 
 def identify_new_email_tab(email_tracker):
-    try:
-        outlook = client.Dispatch("Outlook.Application")
-        for inspector in outlook.Inspectors:
-            current_item = inspector.CurrentItem
-            if current_item and current_item.Class == 43:
-                if not current_item.Sent and not email_tracker.is_processed(current_item):
-                    if current_item.Attachments.Count > 0:
-                        # Skip if the subject starts with "Processed:"
-                        if current_item.Subject.startswith("Processed:"):
-                            continue
-                        return current_item, inspector
-        return None, None
-    except Exception as e:
-        print(f"Error accessing Outlook: {e}")
-        return None, None
+    outlook = client.Dispatch("Outlook.Application")
+    for inspector in outlook.Inspectors:
+        current_item = inspector.CurrentItem
+        if current_item and current_item.Class == 43:
+            # Skip if this is a processed email
+            if "Processed" in current_item.Subject:
+                continue
 
-
+            if ("הדפסת הצעת מחיר" in current_item.Subject and
+                    not current_item.Sent and
+                    not email_tracker.is_processed(current_item) and
+                    current_item.Attachments.Count > 0):
+                return current_item, inspector
+    return None, None
 def process_and_create_new_email(message, input_folder, output_folder, watermark_text, original_inspector):
     try:
         processed_files = {}
