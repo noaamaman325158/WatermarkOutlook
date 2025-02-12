@@ -1,3 +1,5 @@
+import shutil
+
 import win32com.client as client
 import os
 import time
@@ -92,6 +94,14 @@ class OutlookMonitor:
         os.makedirs(self.base_attachments_dir, exist_ok=True)
         os.makedirs(self.output_attachments_dir, exist_ok=True)
 
+    def cleanup_files(self, input_folder: str, output_folder: str):
+        """Clean up temporary files and directories"""
+        for folder in [input_folder, output_folder]:
+            try:
+                shutil.rmtree(folder)
+                print(f"Deleted folder: {folder}")
+            except Exception as e:
+                print(f"Warning: Could not delete folder {folder}: {e}")
     def identify_new_email_tab(self) -> Tuple[Optional[object], Optional[object]]:
         """Identify new email composition windows that need processing"""
         outlook = client.Dispatch("Outlook.Application")
@@ -145,19 +155,11 @@ class OutlookMonitor:
 
         return new_mail
 
-    def cleanup_files(self, input_folder: str, output_folder: str):
-        """Clean up temporary files"""
-        for folder in [input_folder, output_folder]:
-            try:
-                for file in os.listdir(folder):
-                    os.remove(os.path.join(folder, file))
-            except Exception as e:
-                print(f"Warning: Could not clean up some temporary files: {e}")
-
     def process_email(self, message, inspector) -> bool:
         """Process a single email"""
         current_year = datetime.now().year
-        email_folder_name = f"email_{current_year}"
+        current_timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        email_folder_name = f"email_{current_timestamp}"
 
         input_folder = os.path.join(self.base_attachments_dir, email_folder_name)
         output_folder = os.path.join(self.output_attachments_dir, email_folder_name)
