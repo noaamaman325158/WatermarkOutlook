@@ -156,8 +156,8 @@ class OutlookMonitor:
 
     def process_email(self, message, inspector) -> bool:
         """Process a single email"""
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        email_folder_name = f"email_{timestamp}"
+        current_year = datetime.now().year
+        email_folder_name = f"email_{current_year}"
 
         input_folder = os.path.join(self.base_attachments_dir, email_folder_name)
         output_folder = os.path.join(self.output_attachments_dir, email_folder_name)
@@ -168,7 +168,7 @@ class OutlookMonitor:
         try:
             # Process attachments
             processed_files = self.process_attachments(
-                message, input_folder, output_folder, f"Processed {timestamp}"
+                message, input_folder, output_folder, f"Paldom {current_year}"
             )
 
             if not processed_files:
@@ -194,7 +194,6 @@ class OutlookMonitor:
         except Exception as e:
             print(f"Error processing email: {e}")
             return False
-
     def start_monitoring(self):
         """Start monitoring Outlook for new emails"""
         print("Starting Outlook monitoring...")
