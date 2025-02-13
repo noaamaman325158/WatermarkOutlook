@@ -1,5 +1,3 @@
 pywin32
 PyPDF2
 reportlab
-python-docx
-shutil
