@@ -126,9 +126,11 @@ class OutlookMonitor:
             if not attachment.FileName.lower().endswith('.pdf'):
                 print(f"Skipping non-PDF file: {attachment.FileName}")
                 continue
+
             if "הצעת מחיר" in attachment.FileName:
-                print(f"Skipping non-proposal file: {attachment.FileName}")
+                print(f"Skipping empty file: {attachment.FileName}")
                 continue
+
             # Generate new filename with watermark suffix
             filename_base, file_ext = os.path.splitext(attachment.FileName)
             new_filename = f"{filename_base}_watermark{file_ext}"
