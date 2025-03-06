@@ -118,44 +118,36 @@ class OutlookMonitor:
                     return current_item, inspector
         return None, None
 
-    def process_attachments(self, message, input_folder: str, output_folder: str, watermark_text: str) -> dict:
+    def process_attachments(self, message, input_folder: str, output_folder: str,
+                            watermark_text: str) -> dict:
         """Process email attachments"""
         processed_files = {}
         for attachment in message.Attachments:
-            try:
-                # First save the attachment regardless of type
+            if not attachment.FileName.lower().endswith('.pdf'):
+                print(f"Skipping non-PDF file: {attachment.FileName}")
+                continue
+
+            if "הצעת מחיר" in attachment.FileName:
+                print(f"Skipping empty file: {attachment.FileName}")
                 input_path = os.path.join(input_folder, attachment.FileName)
+                output_path = os.path.join(output_folder, attachment.FileName)
                 attachment.SaveAsFile(input_path)
+                shutil.copy(input_path, output_path)
+                processed_files[attachment.FileName] = output_path
+                continue
 
-                if not attachment.FileName.lower().endswith('.pdf'):
-                    if attachment.FileName.lower().endswith(('.xls', '.xlsx')):
-                        print(f"Skipping Excel file: {attachment.FileName}")
-                        processed_files[attachment.FileName] = os.path.join(output_folder, attachment.FileName)
-                        continue
-                    print(f"Skipping non-PDF file: {attachment.FileName}")
-                    processed_files[attachment.FileName] = os.path.join(output_folder, attachment.FileName)
-                    continue
+            # Generate new filename with watermark suffix
+            filename_base, file_ext = os.path.splitext(attachment.FileName)
+            new_filename = f"{filename_base}_watermark{file_ext}"
 
-                if "הצעת מחיר" in attachment.FileName:
-                    print(f"Skipping watermarking for price quote: {attachment.FileName}")
-                    # Just copy the PDF file without watermarking
-                    output_path = os.path.join(output_folder, attachment.FileName)
-                    shutil.copy2(input_path, output_path)
-                    processed_files[attachment.FileName] = output_path
-                    continue
+            input_path = os.path.join(input_folder, attachment.FileName)
+            output_path = os.path.join(output_folder, new_filename)
 
-                # Process regular PDFs with watermark
-                filename_base, file_ext = os.path.splitext(attachment.FileName)
-                new_filename = f"{filename_base}{file_ext}"
-                output_path = os.path.join(output_folder, new_filename)
-                PDFProcessor.add_watermark(input_path, output_path, watermark_text)
-                processed_files[new_filename] = output_path
-
-            except Exception as e:
-                print(f"Error processing attachment {attachment.FileName}: {e}")
+            attachment.SaveAsFile(input_path)
+            PDFProcessor.add_watermark(input_path, output_path, watermark_text)
+            processed_files[new_filename] = output_path
 
         return processed_files
-
 
     def create_new_email(self, original_message, processed_files: dict) -> object:
         """Create new email with processed attachments"""
@@ -187,7 +179,7 @@ class OutlookMonitor:
         try:
             # Process attachments
             processed_files = self.process_attachments(
-                message, input_folder, output_folder, f"Paldom {current_year}"
+                message, input_folder, output_folder, "Customer-view"
             )
 
             if not processed_files:
