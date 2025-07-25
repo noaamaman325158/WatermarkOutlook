@@ -11,6 +11,23 @@ from reportlab.lib.colors import red
 import io
 import hashlib
 from typing import Tuple, Optional
+import logging
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+
+
+logging.basicConfig(
+    filename='outlook_monitor.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
+# Register the font - assuming you have the font file in a 'fonts' folder in your project
+font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'Arial.ttf')
+pdfmetrics.registerFont(TTFont('HebrewFont', font_path))
+
+logging.info("Starting Outlook monitoring...")
 
 
 class EmailTracker:
@@ -51,15 +68,37 @@ class PDFProcessor:
 
     @staticmethod
     def create_watermark(watermark_text: str) -> io.BytesIO:
-        """Create a watermark PDF"""
+        """Create a watermark PDF with proper Hebrew text support"""
+        # Reverse the Hebrew text for proper RTL rendering
+        reversed_text = watermark_text[::-1]
+
         packet = io.BytesIO()
         can = canvas.Canvas(packet, pagesize=letter)
-        can.setFont("Helvetica", 100)
+
+        # Use appropriate font size
+        can.setFont("HebrewFont", 100)
         can.setFillColor(red)
         can.setFillAlpha(0.3)
-        can.translate(100, 200)
+
+        # Get page dimensions
+        page_width, page_height = letter
+
+        # Calculate center of the page
+        center_x = page_width / 2
+        center_y = page_height / 2
+
+        # Translate to the center of the page
+        can.translate(center_x, center_y)
+
+        # Rotate around the center
         can.rotate(45)
-        can.drawString(0, 0, watermark_text)
+
+        # Get text width to center it properly
+        text_width = can.stringWidth(reversed_text, "HebrewFont", 100)
+
+        # Draw the Hebrew text centered
+        can.drawString(-text_width / 2, 0, reversed_text)
+
         can.save()
         packet.seek(0)
         return packet
@@ -102,12 +141,19 @@ class OutlookMonitor:
                 print(f"Deleted folder: {folder}")
             except Exception as e:
                 print(f"Warning: Could not delete folder {folder}: {e}")
+
     def identify_new_email_tab(self) -> Tuple[Optional[object], Optional[object]]:
         """Identify new email composition windows that need processing"""
         outlook = client.Dispatch("Outlook.Application")
+        my_email = "your_email@example.com"  # Replace with your email address
+
         for inspector in outlook.Inspectors:
             current_item = inspector.CurrentItem
             if current_item and current_item.Class == 43:
+                # Check if the sender is not you
+                if current_item.SenderEmailAddress != my_email:
+                    continue
+
                 if "Processed" in current_item.Subject:
                     continue
 
@@ -179,7 +225,7 @@ class OutlookMonitor:
         try:
             # Process attachments
             processed_files = self.process_attachments(
-                message, input_folder, output_folder, "Customer-view"
+                message, input_folder, output_folder, "דוגמא לאישור"
             )
 
             if not processed_files:
