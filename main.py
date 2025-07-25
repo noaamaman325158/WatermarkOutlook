@@ -145,13 +145,12 @@ class OutlookMonitor:
     def identify_new_email_tab(self) -> Tuple[Optional[object], Optional[object]]:
         """Identify new email composition windows that need processing"""
         outlook = client.Dispatch("Outlook.Application")
-        my_email = "your_email@example.com"  # Replace with your email address
 
         for inspector in outlook.Inspectors:
             current_item = inspector.CurrentItem
             if current_item and current_item.Class == 43:
-                # Check if the sender is not you
-                if current_item.SenderEmailAddress != my_email:
+                # Check if the email is created and sent by you
+                if current_item.SentOnBehalfOfName != outlook.Session.CurrentUser.Name:
                     continue
 
                 if "Processed" in current_item.Subject:
