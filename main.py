@@ -166,6 +166,17 @@ class OutlookMonitor:
 
     def process_email(self, message, inspector) -> bool:
         """Process a single email"""
+        # Ask for confirmation before processing attachments
+        print(f"\nFound email with subject: {message.Subject}")
+        print(f"Attachments to process:")
+        for attachment in message.Attachments:
+            print(f" - {attachment.FileName}")
+        
+        confirmation = input("\nDo you want to proceed with attachment manipulation? (y/n): ").strip().lower()
+        if confirmation not in ['y', 'yes']:
+            print("Attachment processing cancelled by user.")
+            return False
+        
         current_year = datetime.now().year
         current_timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
         email_folder_name = f"email_{current_timestamp}"
