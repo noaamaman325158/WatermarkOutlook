@@ -110,6 +110,8 @@ class OutlookMonitor:
             if current_item and current_item.Class == 43:
                 if "Processed" in current_item.Subject:
                     continue
+                if current_item.SentOnBehalfOfName != outlook.Session.CurrentUser.Name:
+                    continue
 
                 if ("הדפסת הצעת מחיר" in current_item.Subject and
                         not current_item.Sent and
