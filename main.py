@@ -1,3 +1,4 @@
+import ctypes
 import shutil
 
 import win32com.client as client
@@ -118,6 +119,20 @@ class OutlookMonitor:
                     return current_item, inspector
         return None, None
 
+    def confirm_processing(self, email_subject: str) -> bool:
+        """Display a confirmation dialog to the user."""
+        message = (
+            f"Found email with subject: '{email_subject}'.\n\n"
+            "This script will add a 'Customer-view' watermark to all PDF attachments "
+            "and create a new email with the modified files.\n\n"
+            "Do you want to proceed?"
+        )
+        title = "Confirm Attachment Processing"
+        # MB_YESNO = 0x00000004
+        # IDYES = 6
+        result = ctypes.windll.user32.MessageBoxW(0, message, title, 4)
+        return result == 6
+
     def process_attachments(self, message, input_folder: str, output_folder: str,
                             watermark_text: str) -> dict:
         """Process email attachments"""
@@ -125,15 +140,6 @@ class OutlookMonitor:
         for attachment in message.Attachments:
             if not attachment.FileName.lower().endswith('.pdf'):
                 print(f"Skipping non-PDF file: {attachment.FileName}")
-                continue
-
-            if "הצעת מחיר" in attachment.FileName:
-                print(f"Skipping empty file: {attachment.FileName}")
-                input_path = os.path.join(input_folder, attachment.FileName)
-                output_path = os.path.join(output_folder, attachment.FileName)
-                attachment.SaveAsFile(input_path)
-                shutil.copy(input_path, output_path)
-                processed_files[attachment.FileName] = output_path
                 continue
 
             # Generate new filename with watermark suffix
@@ -222,10 +228,13 @@ class OutlookMonitor:
                     for attachment in new_email.Attachments:
                         print(f" - {attachment.FileName}")
 
-                    success = self.process_email(new_email, inspector)
-                    if success:
-                        print(f"Successfully processed email. Continuing to monitor...")
-                        print("-" * 50)
+                    if self.confirm_processing(new_email.Subject):
+                        success = self.process_email(new_email, inspector)
+                        if success:
+                            print(f"Successfully processed email. Continuing to monitor...")
+                            print("-" * 50)
+                    else:
+                        print("Processing cancelled by user.")
 
                 time.sleep(2)
 
@@ -235,6 +244,7 @@ class OutlookMonitor:
             print(f"\nAn error occurred: {e}")
         finally:
             print("\nMonitoring ended")
+
 
 
 def main():
