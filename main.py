@@ -19,6 +19,7 @@ class EmailTracker:
 
     def __init__(self):
         self.processed_signatures = set()
+        self.declined_signatures = set()
 
     def generate_signature(self, email_item) -> str:
         """Generate a unique signature for an email based on its content"""
@@ -39,11 +40,22 @@ class EmailTracker:
         """Check if an email has already been processed"""
         signature = self.generate_signature(email_item)
         return signature in self.processed_signatures
+    
+    def is_declined(self, email_item) -> bool:
+        """Check if an email has been declined by the user"""
+        signature = self.generate_signature(email_item)
+        return signature in self.declined_signatures
 
     def mark_processed(self, email_item) -> str:
         """Mark an email as processed"""
         signature = self.generate_signature(email_item)
         self.processed_signatures.add(signature)
+        return signature
+    
+    def mark_declined(self, email_item) -> str:
+        """Mark an email as declined by the user"""
+        signature = self.generate_signature(email_item)
+        self.declined_signatures.add(signature)
         return signature
 
 
@@ -90,6 +102,7 @@ class OutlookMonitor:
         self.email_tracker = EmailTracker()
         self.base_attachments_dir = os.path.join(os.getcwd(), 'attachments')
         self.output_attachments_dir = os.path.join(os.getcwd(), 'output_attachments')
+        self.outlook = client.Dispatch("Outlook.Application")
 
         # Create necessary directories
         os.makedirs(self.base_attachments_dir, exist_ok=True)
@@ -103,10 +116,10 @@ class OutlookMonitor:
                 print(f"Deleted folder: {folder}")
             except Exception as e:
                 print(f"Warning: Could not delete folder {folder}: {e}")
+
     def identify_new_email_tab(self) -> Tuple[Optional[object], Optional[object]]:
         """Identify new email composition windows that need processing"""
-        outlook = client.Dispatch("Outlook.Application")
-        for inspector in outlook.Inspectors:
+        for inspector in self.outlook.Inspectors:
             current_item = inspector.CurrentItem
             if current_item and current_item.Class == 43:
                 if "Processed" in current_item.Subject:
@@ -115,6 +128,7 @@ class OutlookMonitor:
                 if ("הדפסת הצעת מחיר" in current_item.Subject and
                         not current_item.Sent and
                         not self.email_tracker.is_processed(current_item) and
+                        not self.email_tracker.is_declined(current_item) and
                         current_item.Attachments.Count > 0):
                     return current_item, inspector
         return None, None
@@ -157,8 +171,7 @@ class OutlookMonitor:
 
     def create_new_email(self, original_message, processed_files: dict) -> object:
         """Create new email with processed attachments"""
-        outlook = client.Dispatch("Outlook.Application")
-        new_mail = outlook.CreateItem(0)
+        new_mail = self.outlook.CreateItem(0)
         new_mail.Subject = f"Processed: {original_message.Subject}"
         new_mail.Body = "Please find the processed attachments."
 
@@ -219,22 +232,34 @@ class OutlookMonitor:
 
         try:
             while True:
-                new_email, inspector = self.identify_new_email_tab()
+                try:
+                    new_email, inspector = self.identify_new_email_tab()
 
-                if new_email:
-                    print("\nFound new email composition window:")
-                    print(f"Subject: {new_email.Subject}")
-                    print("\nAttachments found:")
-                    for attachment in new_email.Attachments:
-                        print(f" - {attachment.FileName}")
+                    if new_email:
+                        print("\nFound new email composition window:")
+                        print(f"Subject: {new_email.Subject}")
+                        print("\nAttachments found:")
+                        for attachment in new_email.Attachments:
+                            print(f" - {attachment.FileName}")
 
-                    if self.confirm_processing(new_email.Subject):
-                        success = self.process_email(new_email, inspector)
-                        if success:
-                            print(f"Successfully processed email. Continuing to monitor...")
-                            print("-" * 50)
+                        if self.confirm_processing(new_email.Subject):
+                            success = self.process_email(new_email, inspector)
+                            if success:
+                                print(f"Successfully processed email. Continuing to monitor...")
+                                print("-" * 50)
+                        else:
+                            try:
+                                self.email_tracker.mark_declined(new_email)
+                            except Exception as e:
+                                print(f"Warning: Could not mark email as declined: {e}")
+                            print("Processing cancelled by user.")
+                except Exception as e:
+                    if "RPC server is unavailable" in str(e) or "disconnected from its clients" in str(e):
+                        print("Connection to Outlook lost. Reconnecting...")
+                        self.outlook = client.Dispatch("Outlook.Application")
                     else:
-                        print("Processing cancelled by user.")
+                        print(f"Error occurred: {e}")
+                        print("Continuing monitoring...")
 
                 time.sleep(2)
 
