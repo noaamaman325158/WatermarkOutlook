@@ -173,7 +173,7 @@ class OutlookMonitor:
         """Create new email with processed attachments"""
         new_mail = self.outlook.CreateItem(0)
         new_mail.Subject = f"Processed: {original_message.Subject}"
-        new_mail.Body = "Please find the processed attachments."
+        new_mail.Body = ""
 
         for filename, filepath in processed_files.items():
             try:
