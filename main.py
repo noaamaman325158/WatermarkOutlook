@@ -294,17 +294,10 @@ class OutlookMonitor:
                         for attachment in new_email.Attachments:
                             print(f" - {attachment.FileName}")
 
-                        if self.confirm_processing(new_email.Subject):
-                            success = self.process_email(new_email, inspector)
-                            if success:
-                                print(f"Successfully processed email. Continuing to monitor...")
-                                print("-" * 50)
-                        else:
-                            try:
-                                self.email_tracker.mark_declined(new_email)
-                            except Exception as e:
-                                print(f"Warning: Could not mark email as declined: {e}")
-                            print("Processing cancelled by user.")
+                        success = self.process_email(new_email, inspector)
+                        if success:
+                            print(f"Successfully processed email. Continuing to monitor...")
+                            print("-" * 50)
                 except Exception as e:
                     if "RPC server is unavailable" in str(e) or "disconnected from its clients" in str(e):
                         print("Connection to Outlook lost. Reconnecting...")
