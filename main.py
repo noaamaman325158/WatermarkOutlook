@@ -64,15 +64,36 @@ class PDFProcessor:
 
     @staticmethod
     def create_watermark(watermark_text: str) -> io.BytesIO:
-        """Create a watermark PDF"""
+        """Create a watermark PDF on single secondary diagonal from top-right to bottom-left"""
         packet = io.BytesIO()
         can = canvas.Canvas(packet, pagesize=letter)
-        can.setFont("Helvetica", 100)
+        can.setFont("Helvetica", 40)
         can.setFillColor(red)
         can.setFillAlpha(0.3)
-        can.translate(100, 200)
-        can.rotate(45)
-        can.drawString(0, 0, watermark_text)
+        
+        # Get page dimensions
+        page_width, page_height = letter
+        
+        # Calculate spacing between text repetitions along the diagonal
+        spacing = 120  # Space between watermark instances
+        
+        # Calculate diagonal length and number of repetitions
+        diagonal_length = (page_width**2 + page_height**2)**0.5
+        num_repetitions = int(diagonal_length / spacing)
+        
+        # Create single diagonal line from top-right to bottom-left
+        for i in range(num_repetitions):
+            # Calculate position along the diagonal
+            t = i * spacing / diagonal_length
+            x = page_width * (1 - t)
+            y = page_height * (1 - t)
+            
+            can.saveState()
+            can.translate(x, y)
+            can.rotate(-45)  # Negative angle for right-to-left diagonal
+            can.drawString(0, 0, watermark_text)
+            can.restoreState()
+        
         can.save()
         packet.seek(0)
         return packet
@@ -150,8 +171,39 @@ class OutlookMonitor:
     def process_attachments(self, message, input_folder: str, output_folder: str,
                             watermark_text: str) -> dict:
         """Process email attachments"""
+        # Edge case: If only 2 attachments and they are PDF + XLS, remove XLS
+        if message.Attachments.Count == 2:
+            attachment_files = [att.FileName.lower() for att in message.Attachments]
+            has_pdf = any(f.endswith('.pdf') for f in attachment_files)
+            has_xls = any(f.endswith('.xls') or f.endswith('.xlsx') for f in attachment_files)
+            
+            if has_pdf and has_xls:
+                print("Edge case detected: Found only PDF and XLS attachments. Removing XLS attachment.")
+                # Remove XLS attachment(s)
+                attachments_to_remove = []
+                for i, attachment in enumerate(message.Attachments):
+                    if (attachment.FileName.lower().endswith('.xls') or 
+                        attachment.FileName.lower().endswith('.xlsx')):
+                        attachments_to_remove.append(i + 1)  # COM uses 1-based indexing
+                
+                # Remove in reverse order to maintain correct indices
+                for index in reversed(attachments_to_remove):
+                    message.Attachments.Remove(index)
+                    print(f"Removed XLS attachment at index {index}")
+
         processed_files = {}
-        for attachment in message.Attachments:
+        for i, attachment in enumerate(message.Attachments):
+            # Include first attachment without manipulation
+            if i == 0:
+                print(f"Including first attachment without changes: {attachment.FileName}")
+                input_path = os.path.join(input_folder, attachment.FileName)
+                output_path = os.path.join(output_folder, attachment.FileName)
+                attachment.SaveAsFile(input_path)
+                import shutil
+                shutil.copy2(input_path, output_path)
+                processed_files[attachment.FileName] = output_path
+                continue
+                
             if not attachment.FileName.lower().endswith('.pdf'):
                 print(f"Skipping non-PDF file: {attachment.FileName}")
                 continue
