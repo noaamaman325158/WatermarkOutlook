@@ -74,24 +74,23 @@ class PDFProcessor:
         # Get page dimensions
         page_width, page_height = letter
 
-        # Start position (center-ish of the page)
-        start_x = page_width / 2
-        start_y = page_height / 2
+        # Start from top-left corner
+        start_x = 0
+        start_y = page_height
 
         can.saveState()
         can.translate(start_x, start_y)
-        can.rotate(45)  # Rotate once
+        can.rotate(-45)  # Negative rotation for the diagonal direction
 
         # Draw all text on the same rotated line with spacing
-        text = "Customer - view   -   Customer - view   -   Customer - view"
-        can.drawString(-300, 0, text)
+        text = "Customer-view   -   Customer-view   -   Customer-view   -   Customer-view"
+        can.drawString(0, 0, text)
 
         can.restoreState()
 
         can.save()
         packet.seek(0)
         return packet
-
     @staticmethod
     def add_watermark(input_pdf_path: str, output_pdf_path: str, watermark_text: str):
         """Add watermark to a PDF file"""
