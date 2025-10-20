@@ -64,36 +64,30 @@ class PDFProcessor:
 
     @staticmethod
     def create_watermark(watermark_text: str) -> io.BytesIO:
-        """Create a watermark PDF on single secondary diagonal from top-right to bottom-left"""
+        """Create a watermark PDF as one continuous diagonal line"""
         packet = io.BytesIO()
         can = canvas.Canvas(packet, pagesize=letter)
-        can.setFont("Helvetica", 40)
+        can.setFont("Helvetica", 45)
         can.setFillColor(red)
-        can.setFillAlpha(0.3)
-        
+        can.setFillAlpha(0.2)
+
         # Get page dimensions
         page_width, page_height = letter
-        
-        # Calculate spacing between text repetitions along the diagonal
-        spacing = 120  # Space between watermark instances
-        
-        # Calculate diagonal length and number of repetitions
-        diagonal_length = (page_width**2 + page_height**2)**0.5
-        num_repetitions = int(diagonal_length / spacing)
-        
-        # Create single diagonal line from top-right to bottom-left
-        for i in range(num_repetitions):
-            # Calculate position along the diagonal
-            t = i * spacing / diagonal_length
-            x = page_width * (1 - t)
-            y = page_height * (1 - t)
-            
-            can.saveState()
-            can.translate(x, y)
-            can.rotate(-45)  # Negative angle for right-to-left diagonal
-            can.drawString(0, 0, watermark_text)
-            can.restoreState()
-        
+
+        # Start position (center-ish of the page)
+        start_x = page_width / 2
+        start_y = page_height / 2
+
+        can.saveState()
+        can.translate(start_x, start_y)
+        can.rotate(45)  # Rotate once
+
+        # Draw all text on the same rotated line with spacing
+        text = "Customer - view   -   Customer - view   -   Customer - view"
+        can.drawString(-300, 0, text)
+
+        can.restoreState()
+
         can.save()
         packet.seek(0)
         return packet
